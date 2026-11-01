@@ -1,0 +1,11 @@
+{
+  "name": "location-searcher",
+  "version": "0.1.0",
+  "description": "Find any place, its closest major road, turn-by-turn directions, and what's nearby.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  }
+}

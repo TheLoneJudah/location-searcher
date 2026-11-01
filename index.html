@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Location Searcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="map" aria-label="Map"></main>
+
+  <aside class="panel">
+    <header class="masthead">
+      <p class="eyebrow">Maps &amp; directions</p>
+      <h1>Location Searcher</h1>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Sections">
+      <button id="tab-search" class="tab" role="tab" aria-selected="true" aria-controls="view-search" type="button">Search</button>
+      <button id="tab-batch" class="tab" role="tab" aria-selected="false" aria-controls="view-batch" type="button">Batch</button>
+    </div>
+
+    <p id="status" role="status"></p>
+
+    <section id="view-search" role="tabpanel" aria-labelledby="tab-search">
+      <form id="search-form" role="search">
+        <label for="query">Address, place or coordinates</label>
+        <div class="search-box">
+          <input id="query" type="search" placeholder="Space Center Houston" autocomplete="off" required>
+          <button type="submit">Search</button>
+        </div>
+        <p class="hint">Or click anywhere on the map.</p>
+      </form>
+
+      <article id="result" class="result" hidden>
+        <h2 id="place"></h2>
+        <p class="meta"><span id="coords"></span><a id="navigate" target="_blank" rel="noopener">Open in Google Maps</a></p>
+        <div id="highway-line" class="fact" hidden>
+          <span class="fact-label">Closest major road</span>
+          <span id="highway" class="fact-value"></span>
+        </div>
+        <ol id="steps" class="steps"></ol>
+        <button id="copy" type="button" class="quiet" hidden>Copy directions</button>
+      </article>
+    </section>
+
+    <section id="view-batch" role="tabpanel" aria-labelledby="tab-batch" hidden>
+      <label class="dropzone" id="dropzone">
+        <input id="file" type="file" accept=".kml,.kmz,.csv">
+        <span class="dropzone-title">Drop a file here, or browse</span>
+        <span class="hint">Google Earth KML or KMZ, or a CSV with latitude and longitude. Your file isn't uploaded, but a batch sends its coordinates to the map services.</span>
+      </label>
+      <p class="hint"><a href="sample-locations.csv" download>Download a sample CSV</a></p>
+
+      <div id="file-tools" hidden>
+        <p id="file-summary" class="file-summary"></p>
+
+        <h2>Batch directions</h2>
+        <p class="hint" id="batch-estimate"></p>
+        <div class="actions">
+          <button id="run" type="button">Start</button>
+          <button id="stop" type="button" class="quiet" hidden>Stop</button>
+          <button id="download" type="button" class="quiet" hidden>Download CSV</button>
+        </div>
+        <div id="progress" class="progress" hidden><span id="progress-bar"></span></div>
+        <ul id="batch-list" class="batch-list"></ul>
+
+        <h2>Nearby</h2>
+        <p class="hint">Search for a place first, then see which of your locations are within range.</p>
+        <div class="radius-row">
+          <div>
+            <label for="radius">Radius</label>
+            <input id="radius" type="number" min="0" step="any" value="5">
+          </div>
+          <div>
+            <label for="unit">Unit</label>
+            <select id="unit">
+              <option value="mi" selected>miles</option>
+              <option value="ft">feet</option>
+              <option value="km">km</option>
+              <option value="m">metres</option>
+            </select>
+          </div>
+        </div>
+        <p id="radius-summary" class="hint"></p>
+        <ul id="radius-list" class="radius-list"></ul>
+      </div>
+    </section>
+  </aside>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
