@@ -1,5 +1,5 @@
 import {
-  bearingDegrees, closestRoads, directionsFromSteps, distanceFeet, formatDistance, gridCell,
+  areaBoxes, bearingDegrees, closestRoads, directionsFromSteps, distanceFeet, formatDistance, gridCell,
   headingWord, parseCoords, parseKml, parseLocationsCsv, toCsv, withinRadius,
 } from "./geo.js";
 
@@ -8,17 +8,20 @@ const OSRM = "https://router.project-osrm.org";
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
 const HIGHWAY_CLASSES = "motorway|trunk|primary|secondary";
 const SEARCH_RADII_M = [10000, 30000, 80000];
-const OVERPASS_ROUNDS = 4;
-const OVERPASS_TIMEOUT_MS = 30000;
+const OVERPASS_ROUNDS = 3;
+const OVERPASS_TIMEOUT_MS = 25000;
+const OVERPASS_HEDGE_MS = 4000;     // how long one server gets before the next is tried alongside it
 const FT_PER_UNIT = { ft: 1, mi: 5280, m: 3.28084, km: 3280.84 };
 
 const BATCH_LIMIT = 500;
 const SECONDS_PER_LOCATION = 5;
 const NOMINATIM_GAP_MS = 1100;      // Nominatim's public limit is one request a second
-const AREA_BUFFER_DEG = 0.2;        // highways fetched beyond each grid square
+const AREA_SIZE_DEG = 0.25;         // locations inside one grid square share a road download
+const AREA_BUFFER_DEG = 0.15;       // highways fetched beyond the locations in each square
 const FEET_PER_DEG_LAT = 364000;
 const MAX_FAILURES_IN_A_ROW = 3;    // a run of failures means a service is down, so stop and let the user resume
 
@@ -62,6 +65,8 @@ let batch = [];               // one entry per location once a batch has run
 let batchRunning = false;
 let stopRequested = false;
 let searchToken = 0;          // ignores slow answers from a search that has been replaced
+let overpassOrder = OVERPASS_ENDPOINTS;  // the last server to answer goes first
+let areas = new Map();        // the box to fetch for each grid square in the batch
 const areaCache = new Map();  // highways per grid square, shared by nearby locations
 
 function setStatus(message, isError = false) {
@@ -86,27 +91,42 @@ async function reverseGeocode({ lat, lon }, zoom = 14) {
   return fetchJson(`${NOMINATIM}/reverse?${params}`);
 }
 
-/** The public Overpass servers are often busy, so try each in turn over a few rounds. */
+/** Gives each server a head start, then asks the next alongside it. The first good answer wins. */
+async function firstOverpassAnswer(query) {
+  const answered = new AbortController();
+  const attempts = overpassOrder.map(async (url, index) => {
+    await sleep(index * OVERPASS_HEDGE_MS);
+    if (answered.signal.aborted) throw new Error("Another server answered");
+    const data = await fetchJson(url, {
+      method: "POST",
+      body: new URLSearchParams({ data: query }),
+      signal: AbortSignal.any([answered.signal, AbortSignal.timeout(OVERPASS_TIMEOUT_MS)]),
+    });
+    // An overloaded server can answer 200 with no results and a remark explaining why
+    if (data.remark) throw new Error(data.remark);
+    return { url, data };
+  });
+  try {
+    const { url, data } = await Promise.any(attempts);
+    overpassOrder = [url, ...overpassOrder.filter((other) => other !== url)];
+    return data;
+  } finally {
+    answered.abort();
+  }
+}
+
+/** The public Overpass servers are often busy, so try again over a few rounds. */
 async function overpass(query) {
   let lastError;
   for (let round = 1; round <= OVERPASS_ROUNDS; round += 1) {
-    for (const url of OVERPASS_ENDPOINTS) {
-      try {
-        const data = await fetchJson(url, {
-          method: "POST",
-          body: new URLSearchParams({ data: query }),
-          signal: AbortSignal.timeout(OVERPASS_TIMEOUT_MS),
-        });
-        // An overloaded server can answer 200 with no results and a remark explaining why
-        if (data.remark) throw new Error(data.remark);
-        return data;
-      } catch (error) {
-        lastError = error;
-      }
+    try {
+      return await firstOverpassAnswer(query);
+    } catch (error) {
+      lastError = error;
     }
     if (round < OVERPASS_ROUNDS) {
       setStatus(`The road data server is busy. Retrying (${round + 1} of ${OVERPASS_ROUNDS})…`);
-      await sleep(round * 4000);
+      await sleep(round * 3000);
     }
   }
   throw lastError;
@@ -125,15 +145,15 @@ async function highwaysAround(point) {
 
 /** Batch version: fetch each grid square once, and reuse it for every location inside. */
 async function highwaysFromArea(point) {
-  const cell = gridCell(point);
-  if (!areaCache.has(cell.key)) {
-    const b = AREA_BUFFER_DEG;
-    const query = `[out:json][timeout:90];way(${cell.south - b},${cell.west - b},${cell.north + b},${cell.east + b})`
+  const { key } = gridCell(point, AREA_SIZE_DEG);
+  if (!areaCache.has(key)) {
+    const { south, west, north, east } = areas.get(key);
+    const query = `[out:json][timeout:25];way(${south},${west},${north},${east})`
       + `[highway~"^(${HIGHWAY_CLASSES})$"];out tags geom;`;
     const data = await overpass(query);
-    areaCache.set(cell.key, data.elements || []);
+    areaCache.set(key, data.elements || []);
   }
-  const roads = closestRoads(point, areaCache.get(cell.key));
+  const roads = closestRoads(point, areaCache.get(key));
   // A road outside the fetched area could be closer, so only trust ones well inside the buffer
   const trustedFeet = 0.9 * AREA_BUFFER_DEG * FEET_PER_DEG_LAT * Math.cos((point.lat * Math.PI) / 180);
   return roads.length > 0 && roads.every((road) => road.feet < trustedFeet) ? roads : highwaysAround(point);
@@ -299,6 +319,7 @@ async function loadFile(file) {
     if (rows.length === 0) throw new Error("No point locations found in that file.");
     locations = rows;
     batch = [];
+    areaCache.clear();
     $("batch-list").replaceChildren();
     $("download").hidden = true;
     $("progress").hidden = true;
@@ -381,6 +402,7 @@ function setRunning(running) {
 async function runBatch() {
   if (batch.length === 0) {
     batch = locations.slice(0, BATCH_LIMIT).map((row) => ({ ...row, status: "pending" }));
+    areas = areaBoxes(batch, AREA_SIZE_DEG, AREA_BUFFER_DEG);
   }
   const queue = batch.filter((entry) => entry.status !== "done");
   const total = batch.length;
@@ -420,7 +442,7 @@ async function runBatch() {
     $("run").textContent = "Resume";
     const reason = failuresInARow >= MAX_FAILURES_IN_A_ROW
       ? "Paused because the map services are busy. Try Resume in a few minutes."
-      : "Stopped.";
+      : stopRequested ? "Stopped." : "Some lookups failed. Try Resume in a few minutes.";
     setStatus(`${reason} ${done} of ${total} done${failed ? `, ${failed} failed` : ""}.`, failuresInARow >= MAX_FAILURES_IN_A_ROW);
   }
 }

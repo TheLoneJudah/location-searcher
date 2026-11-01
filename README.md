@@ -66,7 +66,7 @@ No packages are needed; the tests use Node's built-in test runner.
 | Routing | [OSRM demo server](https://project-osrm.org/) |
 | Map | [OpenStreetMap](https://www.openstreetmap.org/), [Esri World Imagery](https://www.esri.com/) |
 
-These are free public services with usage limits and no uptime guarantee, so this project suits light personal use. Heavier use should run its own servers or a paid provider. Road lookups can take up to a minute when Overpass is busy.
+These are free public services with usage limits and no uptime guarantee, so this project suits light personal use. Heavier use should run its own servers or a paid provider. When Overpass is busy, a road lookup can take a minute or two or fail; failed batch locations can be retried with Resume.
 
 Map data © OpenStreetMap contributors. Check road access yourself; directions may not reflect private roads, gates or closures.
 

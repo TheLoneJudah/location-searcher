@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  closestRoads, compass, directionsFromSteps, distanceFeet, formatDistance, gridCell, nearestPointOnLine,
+  areaBoxes, closestRoads, compass, directionsFromSteps, distanceFeet, formatDistance, gridCell, nearestPointOnLine,
   parseCoords, parseKml, parseLocationsCsv, roadLabel, toCsv, withinRadius,
 } from "../geo.js";
 
@@ -113,6 +113,20 @@ test("parseKml reads points, decodes names and skips shapes", () => {
     { name: "Cabin <2>", lat: 30.5, lon: -96.2 },
     { name: "Placemark 3", lat: 31, lon: -97 },
   ]);
+});
+
+test("areaBoxes fits each grid square's locations plus the buffer", () => {
+  const boxes = areaBoxes([
+    { lat: 29.51, lon: -95.2 },
+    { lat: 29.6, lon: -95.1 },
+    { lat: 33, lon: -97 },
+  ], 0.25, 0.1);
+  assert.equal(boxes.size, 2);
+  const box = boxes.get(gridCell({ lat: 29.51, lon: -95.2 }, 0.25).key);
+  assert.ok(Math.abs(box.south - 29.41) < 1e-9);
+  assert.ok(Math.abs(box.north - 29.7) < 1e-9);
+  assert.ok(Math.abs(box.west + 95.3) < 1e-9);
+  assert.ok(Math.abs(box.east + 95) < 1e-9);
 });
 
 test("gridCell groups nearby points and handles negative coordinates", () => {

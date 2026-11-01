@@ -231,6 +231,22 @@ export function gridCell({ lat, lon }, size = 0.5) {
   };
 }
 
+/** One box per grid square, just big enough to hold that square's locations plus a buffer. */
+export function areaBoxes(points, size, buffer) {
+  const boxes = new Map();
+  for (const point of points) {
+    const { key } = gridCell(point, size);
+    const box = boxes.get(key);
+    boxes.set(key, {
+      south: Math.min(box?.south ?? Infinity, point.lat - buffer),
+      west: Math.min(box?.west ?? Infinity, point.lon - buffer),
+      north: Math.max(box?.north ?? -Infinity, point.lat + buffer),
+      east: Math.max(box?.east ?? -Infinity, point.lon + buffer),
+    });
+  }
+  return boxes;
+}
+
 function csvCell(value) {
   if (value === null || value === undefined) return "";
   // Spreadsheets run text starting with these as formulas, and names come from uploaded files
